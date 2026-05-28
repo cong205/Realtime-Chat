@@ -1,6 +1,6 @@
 package com.ndcong.chat.repository;
 
-import com.yourname.chat.entity.MessageAttachment;
+import com.ndcong.chat.entity.MessageAttachment;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.UUID;
 

@@ -23,6 +23,7 @@ public class Message {
     private UUID senderId;
 
     @Column(name = "MessageType")
+    @Builder.Default
     private String messageType = "text";
 
     @Column(name = "Content")

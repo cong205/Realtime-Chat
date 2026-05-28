@@ -33,7 +33,11 @@ public class User {
     private String avatarUrl;
 
     @Column(name = "IsOnline")
+    @Builder.Default
     private Boolean isOnline = false;
+    @Column(name = "LastSeen")
+    @Builder.Default
+    private LocalDateTime lastSeen = LocalDateTime.now();
 
     @CreationTimestamp
     @Column(name = "CreatedAt", updatable = false)

@@ -1,0 +1,14 @@
+{
+    "configurations": [
+        {
+            "type": "java",
+            "name": "Spring Boot-ChatApplication<chat-production>",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "mainClass": "com.ndcong.chat.ChatApplication",
+            "projectName": "chat-production",
+            "args": "",
+            "envFile": "${workspaceFolder}/.env"
+        }
+    ]
+}

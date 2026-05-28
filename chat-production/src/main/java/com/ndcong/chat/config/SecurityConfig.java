@@ -40,19 +40,19 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            .cors().and().csrf().disable() // Tắt CSRF vì sử dụng JWT state-less
-            .exceptionHandling().authenticationEntryPoint(unauthorizedHandler).and()
-            .sessionManagement().sessionCreationPolicy(SessionCreationPolicy.STATELESS).and()
+            .cors().and()
+            .csrf().disable()
+            .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
+            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() // Cho phép truy cập tự do đăng nhập, đăng ký
-                .requestMatchers("/ws/**").permitAll()       // Tạm mở WebSocket handshake (Sẽ chặn token qua STOMP header sau)
-                .requestMatchers("/uploads/**").permitAll() // Cho phép truy cập tài nguyên tĩnh (file đính kèm)
-                .anyRequest().authenticated()                // Mọi API khác đều phải có Token
+                .requestMatchers("/api/auth/**").permitAll()
+                .requestMatchers("/ws/**").permitAll()
+                .requestMatchers("/uploads/**").permitAll()
+                .anyRequest().authenticated()
             );
 
-        // Chèn bộ lọc JWT vào trước bộ lọc UsernamePassword tiêu chuẩn
         http.addFilterBefore(jwtAuthenticationFilter(), UsernamePasswordAuthenticationFilter.class);
-
         return http.build();
     }
+    
 }
