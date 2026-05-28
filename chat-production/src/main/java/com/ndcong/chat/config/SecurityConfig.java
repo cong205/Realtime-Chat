@@ -46,6 +46,7 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/auth/**").permitAll() // Cho phép truy cập tự do đăng nhập, đăng ký
                 .requestMatchers("/ws/**").permitAll()       // Tạm mở WebSocket handshake (Sẽ chặn token qua STOMP header sau)
+                .requestMatchers("/uploads/**").permitAll() // Cho phép truy cập tài nguyên tĩnh (file đính kèm)
                 .anyRequest().authenticated()                // Mọi API khác đều phải có Token
             );
 
