@@ -16,6 +16,12 @@ public class FriendshipController {
 
     @Autowired
     private FriendshipRepository friendshipRepository;
+    @Autowired
+    private com.ndcong.chat.repository.NotificationRepository notificationRepository;
+    @Autowired
+    private com.ndcong.chat.repository.UserRepository userRepository;
+    @Autowired
+    private org.springframework.messaging.simp.SimpMessagingTemplate messagingTemplate;
 
     @PostMapping("/request")
     public ResponseEntity<?> requestFriend(@RequestBody java.util.Map<String, String> body,
@@ -28,6 +34,27 @@ public class FriendshipController {
                 .status("PENDING")
                 .build();
         Friendship saved = friendshipRepository.save(f);
+        // create a notification for the responder so they can accept the friend request
+        try{
+            java.util.UUID responderId = UUID.fromString(responder);
+            String requesterName = currentUser != null ? currentUser.getUsername() : "Someone";
+            // Try to enrich with requester full name if available
+            try{ java.util.Optional<com.ndcong.chat.entity.User> ru = userRepository.findById(currentUser.getId()); if (ru.isPresent() && ru.get().getFullName()!=null) requesterName = ru.get().getFullName(); }catch(Exception ignored){}
+                com.ndcong.chat.entity.Notification n = com.ndcong.chat.entity.Notification.builder()
+                    .userId(responderId)
+                    .type("FRIEND_REQUEST")
+                    .payload(String.format("{\"friendshipId\":\"%s\",\"fromId\":\"%s\",\"from\":\"%s\"}", saved.getId(), currentUser!=null?currentUser.getId():"", requesterName))
+                    .build();
+            com.ndcong.chat.entity.Notification savedN = notificationRepository.save(n);
+            // Try to send real-time notification to the responder if they're connected (use username as principal)
+            try{
+                java.util.Optional<com.ndcong.chat.entity.User> ru2 = userRepository.findById(responderId);
+                if (ru2.isPresent()){
+                    String responderUsername = ru2.get().getUsername();
+                    messagingTemplate.convertAndSendToUser(responderUsername, "/queue/notifications", savedN);
+                }
+            }catch(Exception ignore){}
+        }catch(Exception ex){ /* don't break friend request if notification fails */ }
         return ResponseEntity.ok(saved);
     }
 

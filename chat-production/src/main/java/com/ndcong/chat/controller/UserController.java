@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import java.io.IOException;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -21,6 +23,9 @@ public class UserController {
 
 	@Autowired
 	private PasswordEncoder passwordEncoder;
+
+	@Autowired
+	private com.ndcong.chat.service.FileStorageService fileStorageService;
 
 	// Simple request classes to avoid adding extra DTO files
 	public static class RegisterRequest {
@@ -110,6 +115,29 @@ public class UserController {
 		resp.put("fullName", u.getFullName());
 		resp.put("avatarUrl", u.getAvatarUrl());
 		return ResponseEntity.ok(resp);
+	}
+
+	@PostMapping("/me/avatar")
+	public ResponseEntity<?> uploadAvatar(@AuthenticationPrincipal UserPrincipal currentUser,
+										  @RequestParam("file") MultipartFile file) {
+		if (currentUser == null) return ResponseEntity.status(401).body("Unauthorized");
+		try {
+			String fileUrl = fileStorageService.storeFile(file);
+			Optional<User> opt = userRepository.findById(currentUser.getId());
+			if (opt.isEmpty()) return ResponseEntity.notFound().build();
+			User u = opt.get();
+			u.setAvatarUrl(fileUrl);
+			userRepository.save(u);
+			Map<String, Object> resp = new HashMap<>();
+			resp.put("id", u.getId());
+			resp.put("username", u.getUsername());
+			resp.put("email", u.getEmail());
+			resp.put("fullName", u.getFullName());
+			resp.put("avatarUrl", u.getAvatarUrl());
+			return ResponseEntity.ok(resp);
+		} catch (IOException ex) {
+			return ResponseEntity.internalServerError().body("Upload failed: " + ex.getMessage());
+		}
 	}
 
 	@GetMapping("/search")

@@ -4,16 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Realtime Chat</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
   <div id="app">
     <header>
       <h1>Realtime Chat</h1>
-      <div id="auth-area">
-        <button id="btn-login">Login</button>
-        <button id="btn-register">Register</button>
-        <button id="btn-logout" style="display:none">Logout</button>
+      <div id="header-controls">
+        <button id="btn-toggle-sidebar" class="icon-btn" aria-label="Toggle menu">☰</button>
+        <button id="btn-theme" class="icon-btn" aria-label="Toggle theme">🌙</button>
+        <div id="auth-area">
+          <button id="btn-login" class="btn">Login</button>
+          <button id="btn-register" class="btn btn-outline">Register</button>
+          <button id="btn-logout" class="btn" style="display:none">Logout</button>
+        </div>
       </div>
     </header>
 
@@ -22,9 +29,10 @@
         <div class="control">
           <input id="searchUsers" placeholder="Search users..." />
         </div>
+        <div id="searchResults" class="search-results"></div>
         <div id="conversations"></div>
         <div class="control">
-          <button id="btn-new-conversation">New Conversation</button>
+            <button id="btn-new-conversation">New Group</button>
         </div>
       </aside>
 

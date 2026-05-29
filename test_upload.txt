@@ -1,0 +1,2 @@
+This is a test upload file for RealtimeChat.
+Made for E2E upload test.

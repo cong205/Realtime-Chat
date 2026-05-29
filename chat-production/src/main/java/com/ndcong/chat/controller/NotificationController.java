@@ -19,7 +19,8 @@ public class NotificationController {
 
     @GetMapping
     public ResponseEntity<?> list(@org.springframework.security.core.annotation.AuthenticationPrincipal UserPrincipal currentUser) {
-        List<Notification> list = notificationRepository.findByUserIdOrderByCreatedAtDesc(currentUser.getId());
+        // Return only unread notifications by default to keep the UI focused
+        List<Notification> list = notificationRepository.findByUserIdAndIsReadFalseOrderByCreatedAtDesc(currentUser.getId());
         return ResponseEntity.ok(list);
     }
 

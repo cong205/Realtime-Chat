@@ -27,14 +27,41 @@ public class ConversationController {
 
     @Autowired
     private ConversationMemberRepository memberRepository;
+    @Autowired
+    private com.ndcong.chat.repository.UserRepository userRepository;
 
     // 1. Lấy danh sách các phòng chat của User hiện tại (Để vẽ cột bên trái)
     @GetMapping
     public ResponseEntity<?> getMyConversations(@AuthenticationPrincipal UserPrincipal currentUser) {
         // Trả về các conversation mà user này là thành viên (Sắp xếp theo UpdatedAt giảm dần)
-        // Lưu ý: Cần viết thêm câu Query trong ConversationRepository
         List<Conversation> conversations = conversationRepository.findByMembers_UserIdOrderByUpdatedAtDesc(currentUser.getId());
-        return ResponseEntity.ok(conversations);
+        // Map to DTOs and for 1-1 conversations, show the other user's name as conversationName
+        List<java.util.Map<String,Object>> out = new java.util.ArrayList<>();
+        for(Conversation c : conversations){
+            java.util.Map<String,Object> m = new java.util.HashMap<>();
+            m.put("id", c.getId());
+            m.put("conversationName", c.getConversationName());
+            m.put("isGroup", c.getIsGroup());
+            m.put("createdBy", c.getCreatedBy());
+            m.put("createdAt", c.getCreatedAt());
+            m.put("updatedAt", c.getUpdatedAt());
+            // If 1-1 conversation, try to resolve other participant's username
+            if (c.getIsGroup() == null || !c.getIsGroup()){
+                try{
+                    java.util.List<ConversationMember> members = memberRepository.findByConversationId(c.getId());
+                    java.util.Optional<ConversationMember> other = members.stream().filter(cm -> !cm.getUserId().equals(currentUser.getId())).findFirst();
+                    if (other.isPresent()){
+                        java.util.Optional<com.ndcong.chat.entity.User> uo = userRepository.findById(other.get().getUserId());
+                        if (uo.isPresent()){
+                            m.put("conversationName", uo.get().getUsername());
+                            m.put("avatarUrl", uo.get().getAvatarUrl());
+                        }
+                    }
+                }catch(Exception ignored){}
+            }
+            out.add(m);
+        }
+        return ResponseEntity.ok(out);
     }
 
     // 2. Lấy lịch sử tin nhắn của một phòng chat cụ thể (Phân trang - Pagination)
@@ -56,6 +83,38 @@ public class ConversationController {
                                                 @org.springframework.security.core.annotation.AuthenticationPrincipal UserPrincipal currentUser) {
         String name = body.getOrDefault("conversationName", "").toString();
         boolean isGroup = Boolean.parseBoolean(String.valueOf(body.getOrDefault("isGroup", "false")));
+
+        // If client provided memberIds, handle specially for 1-1 (avoid duplicate convs)
+        java.util.List<String> memberIds = null;
+        if (body.containsKey("memberIds")){
+            try{ memberIds = (java.util.List<String>) body.get("memberIds"); }catch(Exception ignored){}
+        }
+
+        if (isGroup && (memberIds == null || memberIds.size() < 2)){
+            return ResponseEntity.badRequest().body("Groups must include at least 3 people (select at least 2 friends)");
+        }
+
+        if (!isGroup && memberIds != null && memberIds.size()==1 && currentUser!=null){
+            // Try to find existing 1-1 conversation between currentUser and the provided member
+            java.util.UUID friendId = java.util.UUID.fromString(memberIds.get(0));
+            java.util.List<Conversation> found = conversationRepository.findOneToOneConversation(currentUser.getId(), friendId);
+            if (found != null && !found.isEmpty()){
+                // return the first existing conversation
+                Conversation existing = found.get(0);
+                // set conversationName to the friend's username for 1-1 UI
+                try{
+                    java.util.Optional<com.ndcong.chat.entity.User> fu = userRepository.findById(friendId);
+                    if (fu.isPresent()){
+                        existing.setConversationName(fu.get().getUsername());
+                        existing.setIsGroup(false);
+                        conversationRepository.save(existing);
+                    }
+                }catch(Exception ignored){}
+                return ResponseEntity.ok(existing);
+            }
+        }
+
+        // Otherwise create a new conversation (group or direct)
         Conversation c = Conversation.builder()
                 .conversationName(name)
                 .isGroup(isGroup)
@@ -72,6 +131,18 @@ public class ConversationController {
                     .build();
             memberRepository.save(cm);
         }
+
+        // Add provided members
+        if (memberIds != null){
+            for(String mid : memberIds){
+                try{
+                    java.util.UUID uid = java.util.UUID.fromString(mid);
+                    ConversationMember cm2 = ConversationMember.builder().conversationId(saved.getId()).userId(uid).role("MEMBER").build();
+                    memberRepository.save(cm2);
+                }catch(Exception ignored){}
+            }
+        }
+
         return ResponseEntity.ok(saved);
     }
 
@@ -80,6 +151,26 @@ public class ConversationController {
         return conversationRepository.findById(conversationId)
                 .map(ResponseEntity::ok)
                 .orElseGet(() -> ResponseEntity.notFound().build());
+    }
+
+    @GetMapping("/{conversationId}/members")
+    public ResponseEntity<?> getConversationMembers(@PathVariable UUID conversationId){
+        java.util.List<ConversationMember> members = memberRepository.findByConversationId(conversationId);
+        java.util.List<java.util.Map<String,Object>> out = new java.util.ArrayList<>();
+        for(ConversationMember cm : members){
+            try{
+                java.util.Optional<com.ndcong.chat.entity.User> u = userRepository.findById(cm.getUserId());
+                if (u.isPresent()){
+                    java.util.Map<String,Object> m = new java.util.HashMap<>();
+                    m.put("id", u.get().getId());
+                    m.put("username", u.get().getUsername());
+                    m.put("fullName", u.get().getFullName());
+                    m.put("avatarUrl", u.get().getAvatarUrl());
+                    out.add(m);
+                }
+            }catch(Exception ignored){}
+        }
+        return ResponseEntity.ok(out);
     }
 
     @PostMapping("/{conversationId}/members")

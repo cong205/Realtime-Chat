@@ -1,28 +1,85 @@
 :root{
-  --bg:#f3f4f6; --accent:#2563eb; --muted:#6b7280; --white:#fff;
+  --bg:#f7fbff; --surface:#ffffff; --accent:#2563eb; --muted:#6b7280; --text:#0f172a; --muted-2:#9aa4b2; --elev-shadow:0 6px 18px rgba(16,24,40,0.06);
+  --glass: rgba(255,255,255,0.6);
 }
+
+html[data-theme="dark"]{
+  --bg: linear-gradient(180deg,#071023,#071419);
+  --surface:#0f172a; --accent:#3b82f6; --muted:#9ca3af; --text:#e6eefc; --muted-2:#9aa4b2; --elev-shadow:0 6px 18px rgba(0,0,0,0.5); --glass: rgba(10,14,20,0.5);
+}
+
 *{box-sizing:border-box}
-body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
-header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--white);border-bottom:1px solid #e5e7eb}
+*{transition:background-color .18s ease,color .18s ease,border-color .18s ease,box-shadow .18s ease}
+body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial, sans-serif;background:var(--bg);background-image:none !important;color:var(--text)}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--surface);border-bottom:1px solid rgba(99,102,120,0.06)}
 header h1{margin:0;font-size:18px}
-main{display:grid;grid-template-columns:260px 1fr 300px;gap:12px;padding:12px}
-aside{background:var(--white);border:1px solid #e5e7eb;border-radius:6px;padding:8px}
-#chat-area{display:flex;flex-direction:column;background:var(--white);border:1px solid #e5e7eb;border-radius:6px}
-#chat-header{padding:12px;border-bottom:1px solid #e5e7eb;font-weight:600}
-#messages{padding:12px;flex:1;overflow:auto;background:linear-gradient(180deg,#fff, #fbfdff)}
-.msg{margin-bottom:10px;display:flex}
+main{display:grid;grid-template-columns:260px 1fr 300px;gap:12px;padding:18px;max-width:1200px;margin:0 auto}
+aside{background:var(--surface);border:1px solid rgba(99,102,120,0.06);border-radius:10px;padding:12px}
+#chat-area{display:flex;flex-direction:column;background:var(--surface);border:1px solid rgba(99,102,120,0.06);border-radius:10px;min-height:60vh}
+#chat-header{padding:12px;border-bottom:1px solid rgba(99,102,120,0.04);font-weight:700}
+#messages{padding:18px;flex:1;overflow:auto;background:transparent}
+.msg{margin-bottom:14px;display:flex;align-items:flex-end;gap:10px}
 .msg.me{justify-content:flex-end}
-.bubble{max-width:70%;padding:8px 12px;border-radius:12px;background:#f1f5f9}
+.avatar{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:linear-gradient(180deg,#e6eefc,#dbeafe);color:var(--accent);font-weight:700;flex-shrink:0}
+.avatar img{width:100%;height:100%;object-fit:cover;border-radius:50%}
+.msg-body{max-width:72%}
+.sender-name{font-size:12px;color:var(--muted-2);margin-bottom:4px}
+.bubble{padding:10px 14px;border-radius:12px;background:var(--surface);box-shadow:var(--elev-shadow)}
 .bubble.me{background:var(--accent);color:white}
-#composer{display:flex;padding:8px;border-top:1px solid #e5e7eb;gap:8px}
-#composer input[type=text],#messageInput{flex:1;padding:8px;border:1px solid #e5e7eb;border-radius:6px}
-#composer button{padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px}
+.meta{font-size:11px;color:var(--muted);margin-top:6px;text-align:right}
+#composer{display:flex;padding:12px;border-top:1px solid rgba(99,102,120,0.04);gap:8px;background:linear-gradient(180deg,transparent,var(--surface))}
+#composer input[type=text],#messageInput{flex:1;padding:10px;border:1px solid rgba(99,102,120,0.06);border-radius:8px;background:transparent;color:var(--text)}
+.btn{padding:8px 12px;background:var(--accent);color:var(--white);border:none;border-radius:8px;cursor:pointer}
+.btn:hover{filter:brightness(.97)}
+.btn-outline{background:transparent;color:var(--accent);border:1px solid rgba(37,99,235,0.12)}
+.icon-btn{background:transparent;border:1px solid transparent;padding:6px 8px;border-radius:8px;cursor:pointer;font-size:16px}
+.icon-btn:hover{background:rgba(0,0,0,0.04)}
 .control{padding:8px}
-#conversations .conv{padding:8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
-#conversations .conv:hover{background:#f8fafc}
-#conversations .conv.active{background:#eef2ff;border-color:#e0e7ff}
+#conversations .conv{display:flex;align-items:center;gap:8px;padding:8px;border-radius:8px;cursor:pointer;border:1px solid transparent}
+#conversations .conv .conv-avatar{width:36px;height:36px;border-radius:50%;background:#eef2ff;display:flex;align-items:center;justify-content:center;font-weight:600}
+#conversations .conv:hover{background:rgba(99,102,120,0.02)}
+#conversations .conv.active{background:linear-gradient(90deg, rgba(238,242,255,0.7), rgba(224,231,255,0.45));border-color:rgba(224,231,255,0.8)}
 .modal{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center}
-.modal-content{background:var(--white);padding:16px;border-radius:8px;min-width:320px}
+.modal-content{background:var(--surface);padding:16px;border-radius:10px;min-width:320px}
 .modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
 #profileInfo{font-size:14px;color:var(--muted)}
+#chat-header{display:flex;align-items:center;gap:12px}
+#chat-header h2{margin:0;font-size:16px}
+
+/* responsive */
+@media (max-width:900px){
+  main{grid-template-columns:1fr; padding:12px}
+  #sidebar-left,#sidebar-right{display:none}
+  header h1{font-size:16px}
+  #composer{position:fixed;left:12px;right:12px;bottom:12px;border-radius:10px;padding:10px 12px;box-shadow:var(--elev-shadow);z-index:40}
+  #messages{padding-bottom:90px}
+  .icon-btn#btn-toggle-sidebar{display:inline-flex}
+}
+
 #friendsList,#notificationsList{max-height:200px;overflow:auto}
+
+.friend-item:hover{background:rgba(99,102,120,0.03);border-radius:8px}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+#group_friend_list label{display:flex;align-items:center;gap:8px;padding:6px 4px}
+
+.search-results{margin-top:8px;border-radius:8px;padding:6px}
+.search-result-item{border-bottom:1px dashed rgba(0,0,0,0.03)}
+.search-result-item:last-child{border-bottom:none}
+
+/* small helpers */
+.hidden{display:none}
+
+/* Defensive: constrain avatar containers so uploaded avatars can't become full-screen */
+.avatar, .conv-avatar {
+  max-width: 120px !important;
+  max-height: 120px !important;
+  overflow: hidden;
+}
+.avatar img, .conv-avatar img {
+  display: block;
+  width: auto !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: cover;
+}
+

@@ -1,11 +1,26 @@
 // Frontend SPA for RealtimeChat (vanilla JS)
 (function(){
   const API = '';
-  const state = { token: null, refreshToken: null, user: null, stompClient: null, currentConversationId: null, subscriptions: {} };
+  const state = { token: null, refreshToken: null, user: null, stompClient: null, currentConversationId: null, subscriptions: {}, friends: [] };
 
   // Helpers
   function q(id){return document.getElementById(id)}
   function jsonBody(o){return JSON.stringify(o)}
+
+  // Theme helpers
+  function getPreferredTheme(){
+    return localStorage.getItem('theme') || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+  }
+
+  function applyTheme(t){
+    try{
+      if (!t || t==='light') { document.documentElement.removeAttribute('data-theme'); q('btn-theme').textContent='🌙'; }
+      else { document.documentElement.setAttribute('data-theme','dark'); q('btn-theme').textContent='☀️'; }
+      localStorage.setItem('theme', t);
+    }catch(e){console.warn('applyTheme',e)}
+  }
+
+  function toggleTheme(){ applyTheme(getPreferredTheme()==='dark' ? 'light' : 'dark'); }
 
   async function apiFetch(path, opts={}){
     opts.headers = opts.headers || {};
@@ -44,6 +59,7 @@
     localStorage.setItem('accessToken', data.accessToken);
     if (data.refreshToken) localStorage.setItem('refreshToken', data.refreshToken);
     await loadMe();
+    await loadFriends();
     connectWS();
     renderAuthState();
     loadConversations();
@@ -82,14 +98,126 @@
   function renderConversations(list){
     const out = q('conversations'); out.innerHTML='';
     list.forEach(c=>{
-      const d = document.createElement('div'); d.className='conv'; d.textContent = c.conversationName || ('Conversation '+c.id);
+      const d = document.createElement('div'); d.className='conv';
+      const avatar = document.createElement('div'); avatar.className='conv-avatar';
+      if (c.avatarUrl){ const img = document.createElement('img'); img.src = c.avatarUrl; img.alt=''; img.style.display='block'; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover'; avatar.appendChild(img); }
+      else { avatar.textContent = (c.conversationName||'').slice(0,1).toUpperCase() || shortId(c.id); }
+      const info = document.createElement('div'); info.style.flex='1';
+      const title = document.createElement('div'); title.textContent = c.conversationName || ('Conversation '+c.id); title.style.fontWeight='600';
+      const sub = document.createElement('div'); sub.style.fontSize='12px'; sub.style.color='var(--muted)'; sub.textContent = c.lastMessagePreview || '';
+      info.appendChild(title); info.appendChild(sub);
+      d.appendChild(avatar); d.appendChild(info);
       d.onclick = ()=>openConversation(c.id, c.conversationName);
       out.appendChild(d);
     });
   }
 
+  // Friends: load and render friend list, used for 1-1 chat and group creation
+  async function loadFriends(){
+    const outEl = q('friendsList'); if (!outEl) return;
+    outEl.innerHTML = '<div style="color:var(--muted)">Loading friends...</div>';
+    const r = await apiFetch('/api/friends');
+    if (!r.ok){ outEl.innerHTML=''; return }
+    const list = await r.json();
+    const accepted = list.filter(f => f.status && String(f.status).toUpperCase() === 'ACCEPTED');
+    const myId = state.user && state.user.id ? String(state.user.id) : null;
+    const otherIds = accepted.map(f => (String(f.requesterId) === myId ? f.responderId : f.requesterId));
+    const unique = Array.from(new Set(otherIds.map(String)));
+    const users = await Promise.all(unique.map(id => apiFetch('/api/users/' + id).then(rr => rr.ok ? rr.json() : null).catch(()=>null)));
+    const friends = users.filter(Boolean);
+    state.friends = friends;
+    renderFriends(friends);
+    const btn = q('btn-new-conversation'); if (btn) btn.disabled = friends.length < 2; // require at least 2 friends to create a group (3 people total)
+  }
+
+  function renderFriends(list){
+    const out = q('friendsList'); out.innerHTML='';
+    if (!list || list.length===0){ out.innerHTML = '<div style="color:var(--muted)">(No friends yet)</div>'; return }
+    list.forEach(u => {
+      const d = document.createElement('div'); d.className='friend-item'; d.style.display='flex'; d.style.alignItems='center'; d.style.gap='8px'; d.style.padding='8px'; d.style.cursor='pointer';
+      const av = document.createElement('div'); av.className='avatar'; av.style.width='36px'; av.style.height='36px'; av.style.fontSize='12px';
+      if (u.avatarUrl){ const img = document.createElement('img'); img.src = u.avatarUrl; img.alt=''; img.style.width='100%'; img.style.height='100%'; img.style.borderRadius='50%'; av.appendChild(img); }
+      else { av.textContent = (u.username||u.fullName||'').slice(0,2).toUpperCase(); }
+      const info = document.createElement('div'); info.style.flex='1';
+      const name = document.createElement('div'); name.textContent = u.username || u.fullName || u.email || 'Unknown'; name.style.fontWeight='600';
+      const sub = document.createElement('div'); sub.textContent = u.email || ''; sub.style.fontSize='12px'; sub.style.color='var(--muted)';
+      info.appendChild(name); info.appendChild(sub);
+      d.appendChild(av); d.appendChild(info);
+      // open direct chat on single click for better UX
+      d.onclick = (e)=> { e.stopPropagation(); openDirectChat(u); };
+      out.appendChild(d);
+    });
+  }
+
+  // Start a direct 1-1 conversation with the given friend
+  async function openDirectChat(friend){
+    if (!state.user){ alert('Please login first'); return }
+    try{
+      // use server-side find-or-create for 1-1 conversations
+      const payload = { conversationName: friend.username || friend.fullName || '', isGroup:false, memberIds: [String(friend.id)] };
+      const cr = await apiFetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+      if (!cr.ok){ alert('Create or open conversation failed'); return }
+      const conv = await cr.json();
+      await loadConversations();
+      await loadMe(); // refresh current user data to ensure profile avatar is current
+      // Force the chat header to the friend's name for 1-1 conversations
+      openConversation(conv.id, friend.username || friend.fullName || '');
+    }catch(e){ console.warn(e); alert('Could not start chat with friend'); }
+  }
+
+  // Open group creation modal with friend checkboxes
+  function openNewGroupModal(){
+    if (!state.user){ alert('Please login first'); return; }
+    if (!state.friends || state.friends.length===0){
+      alert('Thật nực cười nếu tạo nhóm nhắn tin một mình! Hãy đi kết bạn trước nhé.');
+      return;
+    }
+    const friendListHtml = state.friends.map(f => `<label style="display:block;margin:6px 0"><input type="checkbox" value="${f.id}"> ${f.username || f.fullName || f.email}</label>`).join('');
+    const bodyHtml = `<div><label>Group name</label><input id="group_name" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px"/></div><div style="margin-top:8px"><strong>Select friends</strong></div><div id="group_friend_list" style="max-height:220px;overflow:auto;margin-top:6px">${friendListHtml}</div>`;
+    showModal('Create Group', bodyHtml, async ()=>{
+      const name = q('group_name').value || '';
+      const checked = Array.from(document.querySelectorAll('#group_friend_list input[type=checkbox]:checked')).map(cb => cb.value);
+      // require selecting at least 2 friends (group of 3 including creator)
+      if (checked.length < 2){ alert('Vui lòng chọn ít nhất 2 bạn để tạo nhóm (tối thiểu 3 người).'); return; }
+      const cr = await apiFetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationName:name,isGroup:true, memberIds: checked})});
+      if (!cr.ok){ alert('Create group failed'); return; }
+      const conv = await cr.json();
+      await loadConversations();
+      openConversation(conv.id, name || 'Group');
+    });
+  }
+
   async function openConversation(id,name){
-    state.currentConversationId = id; q('chat-header').textContent = name || id; subscribeConversation(id); loadMessages(id);
+    state.currentConversationId = id;
+    // If no name provided, or name equals current user's name, try to resolve a friendly name for 1-1 conversations
+    if (!name || (state.user && (name === state.user.username || name === state.user.fullName))){
+      try{
+        const rr = await apiFetch('/api/conversations/' + id);
+        if (rr.ok){
+          const conv = await rr.json();
+          if (conv){
+            // prefer conv.conversationName unless it equals current user's name
+            name = conv.conversationName;
+            if (!name || name.trim()==='' || (state.user && (name === state.user.username || name === state.user.fullName))){
+              if (!conv.isGroup){
+                const mr = await apiFetch('/api/conversations/' + id + '/members');
+                if (mr.ok){
+                  const members = await mr.json();
+                  if (Array.isArray(members)){
+                    const other = members.find(m => String(m.id) !== String(state.user && state.user.id));
+                    name = other ? (other.username || other.fullName || other.id) : ('Conversation '+id);
+                  }
+                }
+              } else {
+                name = 'Group';
+              }
+            }
+          }
+        }
+      }catch(e){ console.warn('resolve conv name', e) }
+    }
+    q('chat-header').textContent = name || id;
+    subscribeConversation(id); loadMessages(id);
   }
 
   async function loadMessages(conversationId){
@@ -104,12 +232,39 @@
     out.scrollTop = out.scrollHeight;
   }
 
+  function formatTime(iso){
+    if(!iso) return '';
+    const d = new Date(iso);
+    if (isNaN(d)) return '';
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+
+  function shortId(id){ if(!id) return '?'; return id.toString().slice(0,2).toUpperCase(); }
   function appendMessage(m){
     const out = q('messages');
-    const wrapper = document.createElement('div'); wrapper.className = 'msg' + ((state.user && state.user.id===m.senderId)?' me':'');
-    const b = document.createElement('div'); b.className='bubble' + ((state.user && state.user.id===m.senderId)?' me':'');
-    b.textContent = m.content || ('['+ (m.messageType||'') +']');
-    wrapper.appendChild(b); out.appendChild(wrapper); out.scrollTop = out.scrollHeight;
+    const wrapper = document.createElement('div');
+    const isMe = state.user && state.user.id===m.senderId;
+    wrapper.className = 'msg' + (isMe? ' me':'');
+
+    const avatarEl = document.createElement('div'); avatarEl.className='avatar';
+    const avatarUrl = m.senderAvatarUrl || m.senderAvatar || (m.sender && m.sender.avatarUrl);
+    if (avatarUrl){ const img = document.createElement('img'); img.src = avatarUrl; img.alt='avatar'; img.style.display='block'; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover'; avatarEl.appendChild(img); }
+    else { avatarEl.textContent = shortId(m.senderName || m.senderUsername || m.senderId); }
+
+    const body = document.createElement('div'); body.className='msg-body';
+    if (!isMe){ const name = document.createElement('div'); name.className='sender-name'; name.textContent = m.senderName || m.senderUsername || m.sender || m.senderId || 'Unknown'; body.appendChild(name); }
+
+    const bubble = document.createElement('div'); bubble.className='bubble' + (isMe? ' me':'');
+    bubble.textContent = m.content || ('['+ (m.messageType||'') +']');
+    body.appendChild(bubble);
+
+    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = formatTime(m.sentAt || m.sentAtString || m.sentAtUtc || m.sentAtDate || new Date());
+    body.appendChild(meta);
+
+    if (isMe){ wrapper.appendChild(body); wrapper.appendChild(avatarEl); }
+    else { wrapper.appendChild(avatarEl); wrapper.appendChild(body); }
+
+    out.appendChild(wrapper); out.scrollTop = out.scrollHeight;
   }
 
   // Send message via WebSocket if available, else REST
@@ -151,6 +306,17 @@
     client.connect(headers, frame => {
       state.stompClient = client;
       console.log('STOMP connected');
+      // subscribe to personal notifications queue
+      try{ client.subscribe('/user/queue/notifications', m=>{
+          try{ const payload = JSON.parse(m.body); // payload is Notification object
+            // prepend into notifications list
+            const out = q('notificationsList'); if (out) {
+              const itm = renderNotificationItem(payload); out.insertBefore(itm, out.firstChild);
+            }
+            // optionally show a small alert
+            alert('You have a new notification');
+          }catch(e){ console.warn('invalid notif', e) }
+      }); }catch(e){console.warn('subscribe notif failed',e)}
       if (state.currentConversationId) subscribeConversation(state.currentConversationId);
     }, err => { console.warn('STOMP err', err); setTimeout(connectWS,3000); });
   }
@@ -165,14 +331,128 @@
 
   // Profile, friends, notifications
   function renderProfile(){
-    const p = q('profileInfo'); if (!state.user) p.textContent='Not logged in'; else p.innerHTML = `<div><strong>${state.user.username}</strong></div><div>${state.user.email||''}</div>`;
+    const p = q('profileInfo');
+    p.innerHTML = '';
+    if (!state.user){ p.textContent='Not logged in'; return; }
+
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.gap = '8px';
+
+    const avatarDiv = document.createElement('div');
+    avatarDiv.style.width = '48px'; avatarDiv.style.height = '48px'; avatarDiv.style.borderRadius = '50%'; avatarDiv.style.overflow = 'hidden';
+    if (state.user.avatarUrl){
+      const img = document.createElement('img'); img.src = state.user.avatarUrl; img.alt = ''; img.style.width='48px'; img.style.height='48px'; img.style.objectFit='cover';
+      avatarDiv.appendChild(img);
+    } else {
+      const ph = document.createElement('div'); ph.style.width='48px'; ph.style.height='48px'; ph.style.display='flex'; ph.style.alignItems='center'; ph.style.justifyContent='center'; ph.style.background='var(--muted)'; ph.style.borderRadius='50%'; ph.textContent = (state.user.username||'U').slice(0,2).toUpperCase(); avatarDiv.appendChild(ph);
+    }
+
+    const info = document.createElement('div');
+    const nameEl = document.createElement('div'); const strong = document.createElement('strong'); strong.textContent = state.user.username; nameEl.appendChild(strong);
+    const emailEl = document.createElement('div'); emailEl.style.fontSize='13px'; emailEl.style.color='var(--muted)'; emailEl.textContent = state.user.email || '';
+    info.appendChild(nameEl); info.appendChild(emailEl);
+
+    container.appendChild(avatarDiv); container.appendChild(info);
+    p.appendChild(container);
+
+    const btn = document.createElement('button'); btn.textContent='Edit Profile'; btn.className='btn btn-outline'; btn.style.marginTop='8px'; btn.onclick = ()=> openEditProfileModal();
+    p.appendChild(btn);
+  }
+
+  function openEditProfileModal(){
+    if (!state.user) return; const current = state.user.avatarUrl || '';
+    const body = `<div><label>Avatar URL</label><input id="edit_avatar_url" style="width:100%;padding:8px;border:1px solid #e5e7eb;border-radius:6px" value="${current}"/></div><div style="margin-top:8px"><label>Or choose file</label><input id="edit_avatar_file" type="file" accept="image/*"/></div>`;
+    showModal('Edit Profile', body, async ()=>{
+      try{
+        const fileEl = q('edit_avatar_file');
+        if (fileEl && fileEl.files && fileEl.files.length>0){
+          const form = new FormData(); form.append('file', fileEl.files[0]);
+          const r = await apiFetch('/api/users/me/avatar',{method:'POST',body:form});
+          if (!r.ok){ alert('Upload failed'); return }
+          await loadMe(); await loadFriends();
+          alert('Cập nhật avatar thành công');
+          return;
+        }
+        const v = q('edit_avatar_url').value || '';
+        const r2 = await apiFetch('/api/users/me',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({avatarUrl:v})});
+        if (!r2.ok){ alert('Update failed'); return }
+        await loadMe(); await loadFriends();
+        alert('Cập nhật hồ sơ thành công');
+      }catch(e){ console.warn(e); alert('Update error'); }
+    });
   }
 
   async function loadNotifications(){
     const r = await apiFetch('/api/notifications'); if (!r.ok) return; const list = await r.json(); renderNotifications(list);
   }
 
-  function renderNotifications(list){ const out = q('notificationsList'); out.innerHTML=''; list.forEach(n=>{ const d=document.createElement('div'); d.textContent = n.payload || n.type; out.appendChild(d); }); }
+  function renderNotifications(list){
+    const out = q('notificationsList'); out.innerHTML='';
+    if (!list || list.length===0){ out.innerHTML = '<div style="color:var(--muted)">(No notifications)</div>'; return }
+    list.forEach(n=>{ const item = renderNotificationItem(n); out.appendChild(item); });
+  }
+
+  function renderNotificationItem(n){
+    const d = document.createElement('div'); d.style.padding='8px'; d.style.borderBottom='1px solid rgba(0,0,0,0.03)';
+    if (n && n.id) d.dataset.notificationId = String(n.id);
+    if (!n) return d;
+    try{
+      if (n.type === 'FRIEND_REQUEST'){
+        const payload = typeof n.payload === 'string' ? JSON.parse(n.payload) : n.payload;
+        const from = payload.from || payload.fromId || 'Someone';
+        const friendshipId = payload.friendshipId;
+        d.innerHTML = `<div><strong>${from}</strong> sent you a friend request</div>`;
+        const actions = document.createElement('div'); actions.style.marginTop='6px';
+        const btnAccept = document.createElement('button'); btnAccept.textContent='Accept'; btnAccept.className='btn'; btnAccept.style.marginRight='6px';
+        btnAccept.onclick = async ()=>{ await respondFriendRequest(friendshipId, true, n.id); };
+        const btnReject = document.createElement('button'); btnReject.textContent='Reject'; btnReject.className='btn btn-outline';
+        btnReject.onclick = async ()=>{ await respondFriendRequest(friendshipId, false, n.id); };
+        actions.appendChild(btnAccept); actions.appendChild(btnReject);
+        d.appendChild(actions);
+        return d;
+      }
+      if (n.type === 'MESSAGE'){
+        const payload2 = typeof n.payload === 'string' ? JSON.parse(n.payload) : n.payload;
+        const from = payload2.from || payload2.fromId || 'Someone';
+        const convId = payload2.conversationId;
+        const preview = payload2.preview || '';
+        d.innerHTML = `<div style="cursor:pointer"><strong>${from}</strong> đã nhắn tin cho bạn: <div style="font-size:12px;color:var(--muted)">${preview}</div></div>`;
+        d.onclick = async ()=>{
+          try{
+            // mark read
+            if (n.id) await apiFetch('/api/notifications/'+n.id+'/read',{method:'POST'});
+          }catch(e){}
+          try{ if (convId) openConversation(convId, from); }catch(e){}
+          try{ const el = document.querySelector(`[data-notification-id="${n.id}"]`); if (el) el.remove(); }catch(e){}
+        };
+        return d;
+      }
+      // default
+      d.textContent = n.payload || n.type;
+      return d;
+    }catch(e){ d.textContent = n.payload || n.type; return d; }
+  }
+
+  async function respondFriendRequest(friendshipId, accept, notificationId){
+    if (!friendshipId) { alert('Invalid request'); return }
+    try{
+      const url = `/api/friends/${friendshipId}/${accept? 'accept' : 'reject'}`;
+      const r = await apiFetch(url,{method:'POST'});
+      if (!r.ok){ alert('Action failed'); return }
+      // mark notification read and remove it from DOM
+      if (notificationId){
+        const mr = await apiFetch('/api/notifications/'+notificationId+'/read',{method:'POST'});
+        if (mr.ok){ try{ const el = document.querySelector(`[data-notification-id="${notificationId}"]`); if (el) el.remove(); }catch(e){} }
+      }
+      // refresh friends and notifications
+      await loadFriends();
+      await loadNotifications();
+      // show success
+      alert(accept ? 'Chấp nhận kết bạn thành công' : 'Từ chối yêu cầu thành công');
+    }catch(e){ console.warn(e); alert('Error responding to friend request'); }
+  }
 
   // Simple friends search and request
   async function searchUsers(qs){
@@ -181,7 +461,37 @@
 
   function renderSearchResults(list){ const out = q('friendsList'); out.innerHTML=''; list.forEach(u=>{ const d=document.createElement('div'); d.textContent = u.username + ' (' + (u.fullName||'') + ')'; const btn = document.createElement('button'); btn.textContent='Add'; btn.onclick=()=>sendFriendRequest(u.id); d.appendChild(btn); out.appendChild(d); }); }
 
-  async function sendFriendRequest(userId){ await apiFetch('/api/friends/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({responderId:userId})}); alert('Request sent'); }
+  function renderSearchResults(list){
+    const out = q('searchResults') || q('friendsList'); out.innerHTML='';
+    if (!list || list.length===0){ out.innerHTML = '<div style="color:var(--muted)">No users found</div>'; return }
+    list.forEach(u=>{
+      const d = document.createElement('div'); d.className='search-result-item'; d.style.display='flex'; d.style.alignItems='center'; d.style.justifyContent='space-between'; d.style.padding='6px';
+      const left = document.createElement('div'); left.textContent = (u.username || u.fullName || u.email || 'Unknown');
+      const right = document.createElement('div');
+      const myId = state.user && state.user.id ? String(state.user.id) : null;
+      const isMe = myId && String(u.id) === myId;
+      const isFriend = state.friends && state.friends.find(f => String(f.id) === String(u.id));
+      if (isMe){
+        const span = document.createElement('span'); span.style.color='var(--muted)'; span.textContent='You'; right.appendChild(span);
+      } else if (isFriend){
+        const span = document.createElement('span'); span.style.color='var(--muted)'; span.textContent='Friend'; right.appendChild(span);
+      } else {
+        const btn = document.createElement('button'); btn.textContent='Add'; btn.className='btn';
+        btn.onclick = async ()=>{ await sendFriendRequest(u.id, btn); };
+        right.appendChild(btn);
+      }
+      d.appendChild(left); d.appendChild(right); out.appendChild(d);
+    });
+  }
+
+  async function sendFriendRequest(userId, btnEl){
+    try{
+      const r = await apiFetch('/api/friends/request',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({responderId:userId})});
+      if (!r.ok){ alert('Request failed'); return }
+      if (btnEl){ btnEl.textContent='Requested'; btnEl.disabled = true; }
+      alert('Request sent');
+    }catch(e){ console.warn(e); alert('Request error'); }
+  }
 
   // UI wiring
   function showModal(title, bodyHtml, submitCb){ q('modalTitle').textContent=title; q('modalBody').innerHTML=bodyHtml; q('modal').style.display='flex'; q('modalSubmit').onclick = ()=>{ submitCb(); q('modal').style.display='none'; }; q('modalClose').onclick = ()=>{ q('modal').style.display='none'; } }
@@ -197,13 +507,35 @@
       showModal('Register', `<div><label>Username</label><input id="r_user"/></div><div><label>Email</label><input id="r_email"/></div><div><label>Password</label><input id="r_pass" type="password"/></div>`, async ()=>{ const u=q('r_user').value, e=q('r_email').value, p=q('r_pass').value; await register(u,e,p); });
     };
     q('btn-logout').onclick = ()=>{ logout(); };
+    if (q('btn-theme')) q('btn-theme').onclick = ()=>{ toggleTheme(); };
+    if (q('btn-toggle-sidebar')) q('btn-toggle-sidebar').onclick = ()=>{
+      const left = q('sidebar-left'), right = q('sidebar-right');
+      if (!left || !right) return;
+      const shown = window.getComputedStyle(left).display !== 'none';
+      if (shown) { left.style.display='none'; right.style.display='none'; }
+      else { left.style.display='block'; right.style.display='block'; }
+    };
     q('btn-send').onclick = sendMessage;
-    q('btn-new-conversation').onclick = ()=>{ showModal('New Conversation', `<div><label>Name</label><input id="conv_name"/></div>`, async ()=>{ const name=q('conv_name').value; await apiFetch('/api/conversations',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({conversationName:name,isGroup:false})}); await loadConversations(); }); };
+    if (q('btn-new-conversation')){
+      q('btn-new-conversation').textContent = 'New Group';
+      q('btn-new-conversation').onclick = ()=>{ openNewGroupModal(); };
+    }
     q('searchUsers').oninput = (e)=>{ const v=e.target.value; if (v.length>2) searchUsers(v); }
   }
 
   // Init
-  function init(){ renderAuthState(); attachEvents(); const token = localStorage.getItem('accessToken'); if (token){ loadMe().then(()=>{ connectWS(); loadConversations(); loadNotifications(); }); }
+  function init(){
+    renderAuthState();
+    attachEvents();
+    const token = localStorage.getItem('accessToken');
+    if (token){
+      loadMe().then(()=>{ connectWS(); loadConversations(); loadNotifications(); try{ loadFriends(); }catch(e){} });
+    }
+    // apply preferred theme
+    try{ applyTheme(getPreferredTheme()); }catch(e){}
+    // Prevent any uploaded image from accidentally becoming the page background
+    // ensure sidebars are visible on wider screens
+    try{ if (window.innerWidth<=900){ const left = q('sidebar-left'), right = q('sidebar-right'); if (left) left.style.display='none'; if (right) right.style.display='none'; } }catch(e){}
   }
 
   document.addEventListener('DOMContentLoaded', init);
