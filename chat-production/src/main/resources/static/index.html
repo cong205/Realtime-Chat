@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Realtime Chat</title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div id="app">
+    <header>
+      <h1>Realtime Chat</h1>
+      <div id="auth-area">
+        <button id="btn-login">Login</button>
+        <button id="btn-register">Register</button>
+        <button id="btn-logout" style="display:none">Logout</button>
+      </div>
+    </header>
+
+    <main>
+      <aside id="sidebar-left">
+        <div class="control">
+          <input id="searchUsers" placeholder="Search users..." />
+        </div>
+        <div id="conversations"></div>
+        <div class="control">
+          <button id="btn-new-conversation">New Conversation</button>
+        </div>
+      </aside>
+
+      <section id="chat-area">
+        <div id="chat-header">Select a conversation</div>
+        <div id="messages"></div>
+        <div id="composer">
+          <input id="messageInput" placeholder="Type a message..." />
+          <input id="fileInput" type="file" />
+          <button id="btn-send">Send</button>
+        </div>
+      </section>
+
+      <aside id="sidebar-right">
+        <div id="profile">
+          <h3>Profile</h3>
+          <div id="profileInfo">Not logged in</div>
+        </div>
+        <div id="friends">
+          <h3>Friends</h3>
+          <div id="friendsList"></div>
+        </div>
+        <div id="notifications">
+          <h3>Notifications</h3>
+          <div id="notificationsList"></div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <!-- Login/Register modals (simple) -->
+  <div id="modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <h3 id="modalTitle">Login</h3>
+      <div id="modalBody"></div>
+      <div class="modal-actions">
+        <button id="modalSubmit">Submit</button>
+        <button id="modalClose">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+  <script src="/js/main.js" defer></script>
+</body>
+</html>

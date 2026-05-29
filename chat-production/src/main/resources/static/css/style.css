@@ -1,0 +1,28 @@
+:root{
+  --bg:#f3f4f6; --accent:#2563eb; --muted:#6b7280; --white:#fff;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,Segoe UI,Roboto,Arial;background:var(--bg);color:#111}
+header{display:flex;justify-content:space-between;align-items:center;padding:12px 20px;background:var(--white);border-bottom:1px solid #e5e7eb}
+header h1{margin:0;font-size:18px}
+main{display:grid;grid-template-columns:260px 1fr 300px;gap:12px;padding:12px}
+aside{background:var(--white);border:1px solid #e5e7eb;border-radius:6px;padding:8px}
+#chat-area{display:flex;flex-direction:column;background:var(--white);border:1px solid #e5e7eb;border-radius:6px}
+#chat-header{padding:12px;border-bottom:1px solid #e5e7eb;font-weight:600}
+#messages{padding:12px;flex:1;overflow:auto;background:linear-gradient(180deg,#fff, #fbfdff)}
+.msg{margin-bottom:10px;display:flex}
+.msg.me{justify-content:flex-end}
+.bubble{max-width:70%;padding:8px 12px;border-radius:12px;background:#f1f5f9}
+.bubble.me{background:var(--accent);color:white}
+#composer{display:flex;padding:8px;border-top:1px solid #e5e7eb;gap:8px}
+#composer input[type=text],#messageInput{flex:1;padding:8px;border:1px solid #e5e7eb;border-radius:6px}
+#composer button{padding:8px 12px;background:var(--accent);color:white;border:none;border-radius:6px}
+.control{padding:8px}
+#conversations .conv{padding:8px;border-radius:6px;cursor:pointer;border:1px solid transparent}
+#conversations .conv:hover{background:#f8fafc}
+#conversations .conv.active{background:#eef2ff;border-color:#e0e7ff}
+.modal{position:fixed;inset:0;background:rgba(0,0,0,0.35);display:flex;align-items:center;justify-content:center}
+.modal-content{background:var(--white);padding:16px;border-radius:8px;min-width:320px}
+.modal-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}
+#profileInfo{font-size:14px;color:var(--muted)}
+#friendsList,#notificationsList{max-height:200px;overflow:auto}

@@ -61,4 +61,17 @@ public class JwtTokenProvider {
         }
         return false;
     }
+
+    // 4. Tạo JWT từ userId (dùng cho refresh token flow)
+    public String generateTokenFromUserId(String userId) {
+        Date now = new Date();
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
+
+        return Jwts.builder()
+                .setSubject(userId)
+                .setIssuedAt(now)
+                .setExpiration(expiryDate)
+                .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+                .compact();
+    }
 }
