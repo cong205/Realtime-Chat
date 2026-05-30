@@ -26,6 +26,9 @@ public class ConversationController {
     private MessageRepository messageRepository;
 
     @Autowired
+    private com.ndcong.chat.repository.MessageAttachmentRepository attachmentRepository;
+
+    @Autowired
     private ConversationMemberRepository memberRepository;
     @Autowired
     private com.ndcong.chat.repository.UserRepository userRepository;
@@ -74,7 +77,25 @@ public class ConversationController {
             
         // Gọi Stored Procedure sp_LoadMessages mà chúng ta đã định nghĩa ở Phase 1
         List<Message> history = messageRepository.loadMessages(conversationId, page, pageSize);
-        return ResponseEntity.ok(history);
+
+        // Enrich messages with attachments for frontend convenience
+        java.util.List<java.util.Map<String, Object>> out = new java.util.ArrayList<>();
+        for (Message m : history) {
+            java.util.Map<String, Object> mm = new java.util.HashMap<>();
+            mm.put("id", m.getId());
+            mm.put("conversationId", m.getConversationId());
+            mm.put("senderId", m.getSenderId());
+            mm.put("messageType", m.getMessageType());
+            mm.put("content", m.getContent());
+            mm.put("sentAt", m.getSentAt());
+            try{
+                java.util.List<com.ndcong.chat.entity.MessageAttachment> atts = attachmentRepository.findByMessageId(m.getId());
+                mm.put("attachments", atts == null ? java.util.Collections.emptyList() : atts);
+            }catch(Exception ignored){ mm.put("attachments", java.util.Collections.emptyList()); }
+            out.add(mm);
+        }
+
+        return ResponseEntity.ok(out);
     }
 
     // Tạo conversation mới

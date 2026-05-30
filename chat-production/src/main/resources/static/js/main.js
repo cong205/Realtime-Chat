@@ -223,12 +223,38 @@
   async function loadMessages(conversationId){
     const r = await apiFetch('/api/conversations/'+conversationId+'/messages?page=1&pageSize=100');
     if (!r.ok){ console.warn('load messages failed'); return }
-    const msgs = await r.json(); renderMessages(msgs);
+    let msgs = await r.json();
+    if (!Array.isArray(msgs)) msgs = [];
+    // sort messages oldest -> newest by sentAt (fallbacks handled)
+    msgs.sort((a,b)=>{
+      const ta = Date.parse(a && (a.sentAt || a.sentAtString || a.sentAtUtc || a.sentAtDate || a.createdAt) || 0) || 0;
+      const tb = Date.parse(b && (b.sentAt || b.sentAtString || b.sentAtUtc || b.sentAtDate || b.createdAt) || 0) || 0;
+      return ta - tb;
+    });
+
+    // attach sender user info by fetching users for unique senderIds
+    state.userCache = state.userCache || {};
+    const ids = Array.from(new Set(msgs.map(m => (m && (m.senderId || (m.sender && (m.sender.id || m.senderId)) ))).filter(Boolean)));
+    const toFetch = ids.filter(id => !state.userCache[id]);
+    await Promise.all(toFetch.map(async id => {
+      try{
+        const ur = await apiFetch('/api/users/' + id);
+        if (ur.ok){ state.userCache[id] = await ur.json(); }
+        else { state.userCache[id] = null; }
+      }catch(e){ state.userCache[id] = null; }
+    }));
+
+    msgs.forEach(m => {
+      try{ if (!m.sender && m.senderId && state.userCache[m.senderId]) m.sender = state.userCache[m.senderId]; }catch(e){}
+    });
+
+    renderMessages(msgs);
   }
 
   function renderMessages(msgs){
     const out = q('messages'); out.innerHTML='';
     msgs.forEach(m=>appendMessage(m));
+    // keep scroll at bottom to show newest messages
     out.scrollTop = out.scrollHeight;
   }
 
@@ -243,22 +269,49 @@
   function appendMessage(m){
     const out = q('messages');
     const wrapper = document.createElement('div');
-    const isMe = state.user && state.user.id===m.senderId;
+    // normalize sender info
+    const senderObj = (m && m.sender && typeof m.sender === 'object') ? m.sender : null;
+    const senderId = m && (m.senderId || (senderObj && (senderObj.id || senderObj.userId)) || (typeof m.sender === 'string' ? m.sender : null));
+    const isMe = state.user && String(state.user.id) === String(senderId);
     wrapper.className = 'msg' + (isMe? ' me':'');
 
     const avatarEl = document.createElement('div'); avatarEl.className='avatar';
-    const avatarUrl = m.senderAvatarUrl || m.senderAvatar || (m.sender && m.sender.avatarUrl);
+    const avatarUrl = (m && (m.senderAvatarUrl || m.senderAvatar || (senderObj && (senderObj.avatarUrl || senderObj.avatar)) || m.avatarUrl));
     if (avatarUrl){ const img = document.createElement('img'); img.src = avatarUrl; img.alt='avatar'; img.style.display='block'; img.style.width='100%'; img.style.height='100%'; img.style.objectFit='cover'; avatarEl.appendChild(img); }
-    else { avatarEl.textContent = shortId(m.senderName || m.senderUsername || m.senderId); }
+    else { avatarEl.textContent = shortId(m && (m.senderName || (senderObj && (senderObj.username || senderObj.fullName)) || senderId)); }
 
     const body = document.createElement('div'); body.className='msg-body';
-    if (!isMe){ const name = document.createElement('div'); name.className='sender-name'; name.textContent = m.senderName || m.senderUsername || m.sender || m.senderId || 'Unknown'; body.appendChild(name); }
+    if (!isMe){ const name = document.createElement('div'); name.className='sender-name'; name.textContent = (m && (m.senderName || m.senderUsername || (senderObj && (senderObj.username || senderObj.fullName)) || senderId || 'Unknown')); body.appendChild(name); }
 
     const bubble = document.createElement('div'); bubble.className='bubble' + (isMe? ' me':'');
-    bubble.textContent = m.content || ('['+ (m.messageType||'') +']');
+    // Render text content
+    const text = (m && (m.content || ('['+ (m.messageType||'') +']')));
+    if (text) {
+      const p = document.createElement('div'); p.textContent = text; bubble.appendChild(p);
+    }
+    // Render attachments if any (added by backend)
+    try{
+      const atts = m && (m.attachments || m.attachmentsList || m.attachments || []);
+      if (Array.isArray(atts) && atts.length>0){
+        const attWrap = document.createElement('div'); attWrap.className='attachments';
+        atts.forEach(a => {
+          try{
+            const t = (a && a.fileType) || (a && a.mimeType && a.mimeType.split('/')[0]) || 'file';
+            const url = a.fileUrl || a.filePath || a.url;
+            if (!url) return;
+            if (t === 'image'){
+              const img = document.createElement('img'); img.src = url; img.alt = a.fileName || 'image'; img.style.maxWidth='320px'; img.style.display='block'; img.style.marginTop='6px'; attWrap.appendChild(img);
+            } else {
+              const link = document.createElement('a'); link.href = url; link.textContent = a.fileName || url; link.target = '_blank'; link.rel='noopener noreferrer'; link.style.display='block'; link.style.marginTop='6px'; attWrap.appendChild(link);
+            }
+          }catch(e){ console.warn('render attachment', e); }
+        });
+        bubble.appendChild(attWrap);
+      }
+    }catch(e){ /* ignore */ }
     body.appendChild(bubble);
 
-    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = formatTime(m.sentAt || m.sentAtString || m.sentAtUtc || m.sentAtDate || new Date());
+    const meta = document.createElement('div'); meta.className='meta'; meta.textContent = formatTime(m && (m.sentAt || m.sentAtString || m.sentAtUtc || m.sentAtDate) || new Date());
     body.appendChild(meta);
 
     if (isMe){ wrapper.appendChild(body); wrapper.appendChild(avatarEl); }
@@ -268,19 +321,23 @@
   }
 
   // Send message via WebSocket if available, else REST
-  function sendMessage(){
-    const text = q('messageInput').value.trim(); const file = q('fileInput').files[0];
+  async function sendMessage(){
+    const text = q('messageInput').value.trim(); const file = (q('fileInput') && q('fileInput').files) ? q('fileInput').files[0] : null;
     if(!text && !file) return;
     if (file){
       // create a temporary message via REST then upload
       const payload = { conversationId: state.currentConversationId, senderId: state.user ? state.user.id : null, content: 'file', messageType: 'file' };
-      apiFetch('/api/messages',{method:'POST',body:jsonBody(payload)}).then(async r=>{
-        if (!r.ok) { alert('send failed'); return }
+      try{
+        const r = await apiFetch('/api/messages',{method:'POST',body:jsonBody(payload)});
+        if (!r.ok){ const txt = await r.text(); console.warn('create file message failed', txt); alert('Send failed'); return }
         const sent = await r.json();
         const form = new FormData(); form.append('file', file); form.append('messageId', sent.id);
-        await apiFetch('/api/files/upload',{method:'POST',body:form});
-        q('fileInput').value='';
-      });
+        const up = await apiFetch('/api/files/upload',{method:'POST',body:form});
+        if (!up.ok){ const txt = await up.text(); console.warn('file upload failed', txt); alert('File upload failed'); return }
+        // reload messages for the conversation so attachment appears
+        await loadMessages(state.currentConversationId);
+        if (q('fileInput')) q('fileInput').value='';
+      }catch(e){ console.warn('file send error', e); alert('Error sending file'); }
       return;
     }
     const msg = { conversationId: state.currentConversationId, senderId: state.user ? state.user.id : null, content: text, messageType: 'text' };
